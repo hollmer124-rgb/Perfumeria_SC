@@ -11,9 +11,11 @@ erDiagram
     profiles ||--o{ sales : creates
     profiles ||--o{ purchases : records
     profiles ||--o{ expenses : records
+    profiles ||--o{ financial_incomes : records
     profiles ||--o{ cash_sessions : opens
     profiles ||--o{ inventory_movements : records
     profiles ||--o{ audit_logs : acts
+    profiles ||--o{ sale_adjustments : authorizes
 
     perfumes ||--o{ retail_products : references
     perfumes ||--o{ recipes : has
@@ -24,22 +26,47 @@ erDiagram
     suppliers ||--o{ purchases : supplies
 
     sales ||--|{ sale_items : contains
+    sales ||--o| sale_adjustments : reverses
     retail_products ||--o{ sale_items : sold
     recipes ||--o{ sale_items : prepared
     sale_items ||--o{ sale_material_usage : consumes
     materials ||--o{ sale_material_usage : used
     cash_sessions ||--o{ sales : settles
     cash_sessions ||--o{ cash_movements : records
+    cash_sessions ||--o{ financial_incomes : receives
+    cash_sessions ||--o{ sale_adjustments : refunds
+    sale_adjustments ||--o| cash_movements : reverses
+    expense_categories ||--o{ expenses : classifies
+    payment_method_settings {
+        payment_method method PK
+        text label
+        boolean enabled
+        timestamptz updated_at
+    }
 
     purchases ||--|{ purchase_items : contains
     materials ||--o{ purchase_items : replenishes
     retail_products ||--o{ purchase_items : replenishes
     purchase_items ||--o{ inventory_movements : posts
     sale_items ||--o{ inventory_movements : posts
+    sale_adjustments ||--o{ inventory_movements : compensates
     materials ||--o{ inventory_movements : tracks
     retail_products ||--o{ inventory_movements : tracks
 
     expenses ||--o{ cash_movements : paid_from
+    financial_incomes ||--o| cash_movements : cash_entry
+    dashboard_metrics {
+        timestamptz day_start
+        timestamptz month_start
+        jsonb role_scoped_summary
+    }
+    admin_operational_report {
+        timestamptz period_start
+        timestamptz period_end
+        uuid product_filter
+        uuid employee_filter
+        jsonb aggregated_report
+    }
 
     profiles {
         uuid id PK,FK
@@ -102,7 +129,10 @@ erDiagram
         uuid cash_session_id FK
         bigint total_cop
         bigint total_cost_cop
+        bigint discount_cop
         payment_method payment_method
+        uuid idempotency_key UK
+        text request_fingerprint
     }
     sale_items {
         uuid id PK
@@ -143,6 +173,7 @@ erDiagram
         uuid retail_product_id FK
         uuid sale_item_id FK
         uuid purchase_item_id FK
+        uuid sale_adjustment_id FK
         numeric quantity_delta
         bigint unit_cost_cop
         bigint total_cost_cop
@@ -150,8 +181,23 @@ erDiagram
     expenses {
         uuid id PK
         uuid created_by FK
+        uuid category_id FK
         bigint amount_cop
         date expense_date
+        payment_method payment_method
+    }
+    expense_categories {
+        uuid id PK
+        text name UK
+        boolean active
+    }
+    financial_incomes {
+        uuid id PK
+        uuid created_by FK
+        uuid cash_session_id FK
+        bigint amount_cop
+        date income_date
+        payment_method payment_method
     }
     cash_sessions {
         uuid id PK
@@ -166,7 +212,20 @@ erDiagram
         uuid cash_session_id FK
         uuid expense_id FK
         uuid sale_id FK
+        uuid sale_adjustment_id FK
+        uuid income_id FK
         bigint amount_cop
+    }
+    sale_adjustments {
+        uuid id PK
+        uuid sale_id FK,UK
+        text operation
+        text reason
+        bigint amount_cop
+        boolean inventory_restored
+        payment_method refund_payment_method
+        uuid cash_session_id FK
+        uuid authorized_by FK
     }
     audit_logs {
         bigint id PK
@@ -203,16 +262,41 @@ erDiagram
   Copia nombre, presentación, precio, costo y, cuando aplica, versión y
   componentes de receta. `sale_material_usage` conserva el consumo efectivo y
   el costo de cada material. Cambios futuros no alteran la venta histórica.
+- `register_pos_sale` liga cada solicitud a una clave idempotente y una huella,
+  bloquea existencias concurrentes y confirma encabezado, líneas, snapshots,
+  consumo, movimientos y caja en una transacción. `sale_adjustments` conserva
+  anulaciones/devoluciones totales y sus movimientos compensatorios; las ventas
+  no se eliminan físicamente.
+- `payment_method_settings` configura etiquetas y disponibilidad de los tipos
+  definidos por `payment_method`; agregar un tipo requiere migrar el enum.
 - El empleado puede consultar sus ventas y registrar ventas; sus permisos SQL
   no incluyen columnas de costos, márgenes ni utilidades. `recipe_components`,
-  inventario de materiales, compras, gastos y auditoría quedan restringidos al
-  administrador.
+  inventario operativo y ajustes de sus propias ventas son de solo lectura;
+  costos, compras, gastos, configuración y auditoría quedan restringidos al
+  administrador. El empleado solo puede consultar componentes de recetas
+  activas.
 - `purchases`/`purchase_items` se preparan como borrador y una función registra
   su recepción junto con existencias, promedio ponderado y movimientos en una
   sola transacción.
-- Las tablas de caja vinculan sesiones con ventas en efectivo, gastos y
-  movimientos. Los importes de ventas son ingresos, no utilidades; los costos
-  y gastos siguen sin estar disponibles para el rol empleado.
+- Las tablas de caja vinculan sesiones con ventas de todos los métodos de pago,
+  ingresos adicionales, gastos en efectivo, reversiones y movimientos. Solo el
+  efectivo cambia el saldo esperado y el conteo físico. Los importes de ventas
+  son ingresos, no utilidades; los costos y gastos siguen sin estar disponibles
+  para el rol empleado.
+- `expense_categories` clasifica egresos y conserva las categorías históricas
+  mediante desactivación, no borrado. `financial_incomes` separa otros ingresos
+  de las ventas; únicamente un ingreso en efectivo genera un movimiento que
+  cambia el efectivo esperado.
+- `admin_financial_report` resume ventas netas, costos históricos de venta,
+  utilidad bruta, otros ingresos y gastos por período, exclusivamente para el
+  administrador. Cada sesión abierta se limita a una por usuario mediante un
+  índice único parcial; el modelo actual no identifica cajas físicas distintas.
+- `dashboard_metrics` calcula resúmenes acotados del día y mes, alertas de stock
+  y tendencias diarias. Para empleados restringe ventas a `auth.uid()` y omite
+  costos/utilidad/gastos; `admin_operational_report` valida rol administrador y
+  agrega los reportes filtrados en PostgreSQL. Las devoluciones se restan del
+  ingreso de venta; para filtros de producto se atribuyen proporcionalmente a
+  las líneas seleccionadas, sin alterar los registros transaccionales.
 
 ## Seguridad y auditoría
 

@@ -22,6 +22,10 @@ import { InventoryPage } from "@/features/inventory/inventory-page";
 import { PurchasesPage } from "@/features/inventory/purchases-page";
 import { SuppliersPage } from "@/features/inventory/suppliers-page";
 import { RecipesPage } from "@/features/recipes/recipes-page";
+import { PosPage } from "@/features/sales/pos-page";
+import { CashPage } from "@/features/financial/cash-page";
+import { ExpensesPage } from "@/features/financial/expenses-page";
+import { ReportsPage } from "@/features/financial/reports-page";
 
 function renderModule(module: (typeof adminModules)[number]) {
   switch (module.path) {
@@ -35,6 +39,14 @@ function renderModule(module: (typeof adminModules)[number]) {
       return <SuppliersPage />;
     case "/recetas":
       return <RecipesPage />;
+    case "/ventas":
+      return <PosPage />;
+    case "/caja":
+      return <CashPage />;
+    case "/gastos":
+      return <ExpensesPage />;
+    case "/informes":
+      return <ReportsPage />;
     default:
       return <ModulePage module={module} />;
   }

@@ -149,14 +149,20 @@ export async function manufactureRecipe(input: {
   customer_id: string | null;
   cash_session_id: string | null;
   notes: string;
+  idempotency_key: string;
 }): Promise<string> {
   const { data, error } = await requireSupabase().rpc(
-    "register_recipe_manufacture",
+    "register_pos_sale",
     {
-      p_recipe_id: input.recipe_id,
-      p_quantity: input.quantity,
-      p_fill_consumption_ml: input.fill_consumption_ml,
+      p_items: [{
+        kind: "recipe",
+        id: input.recipe_id,
+        quantity: input.quantity,
+        fill_consumption_ml: input.fill_consumption_ml,
+      }],
       p_payment_method: input.payment_method,
+      p_idempotency_key: input.idempotency_key,
+      p_discount_cop: 0,
       p_customer_id: input.customer_id,
       p_cash_session_id: input.cash_session_id,
       p_notes: input.notes.trim() || null,

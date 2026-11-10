@@ -86,16 +86,15 @@ una sesión autenticada antes de que pueda venderse. No se suponen conversiones
 entre gramos y mililitros ni se crean otras recetas.
 
 El seed no crea usuarios en `auth.users` o perfiles, ni incluye compras ni
-ventas. `create_purchase` y `register_sale` exigen un perfil y una llamada
+ventas. `create_purchase` y `register_pos_sale` exigen un perfil y una llamada
 autenticada; `receive_purchase` también exige administrador. No se simula
 `auth.uid()`, no se inventan credenciales y no se insertan ventas directamente.
 Para probar las 5 compras, inicia sesión con un administrador real, registra
 5 compras desde el módulo y recibe cada una. Después de definir/activar la
-receta y recibir existencias suficientes, las ventas solo pueden registrarse
-llamando `public.register_sale(jsonb, public.payment_method, uuid, uuid, text)`
-desde un cliente con una sesión real de administrador o empleado. El módulo
-Ventas y el módulo Recetas aún están en preparación; no se afirma que sus
-pantallas permitan esas operaciones. Las ventas en efectivo también requieren
+receta y recibir existencias suficientes, registra ventas desde el módulo
+Ventas o con `public.register_pos_sale(...)` usando una sesión real de
+administrador o empleado. La RPC `register_sale` anterior está revocada para
+evitar ventas fuera del flujo idempotente. Las ventas en efectivo requieren
 una caja abierta para ese usuario. No se usa SQL Editor privilegiado para
 fingir estas operaciones.
 
@@ -159,12 +158,24 @@ transacción; una falla revierte tanto los datos como la auditoría.
    npx supabase link --project-ref <PROJECT_REF>
    ```
 
-3. Revisa las migraciones pendientes y publícalas:
+3. Compara explícitamente el estado local con el proyecto enlazado y revisa
+   qué migraciones están pendientes antes de publicarlas:
 
    ```bash
-   npx supabase migration list
-   npx supabase db push
+   npx supabase migration list --remote
+   npx supabase db pushVoy a confirmar primero el historial remoto y el alcance exacto del `db push --remote --dry-run`. Si el ensayo incluye únicamente la migración financiera nueva, la publicaré sin seed y verificaré después que figure aplicada.
+
+Ran terminal command: npx supabase migration list --remote
+
+Ran terminal command: npx supabase db push --remote --dry-run
+
+Ran terminal command: npx supabase db push --remote --yes
    ```
+
+`npx supabase migration list` sin `--remote` consulta la base local en
+`127.0.0.1:54322` y requiere que el stack local esté iniciado. Si no vas a
+trabajar localmente, no ejecutes `supabase start` solo para revisar el estado
+remoto; usa `migration list --remote`.
 
 No uses `db reset` contra producción: elimina y reconstruye la base local.
 No ejecutes `npx supabase db push --include-seed --remote`: el seed contiene
@@ -258,7 +269,7 @@ se debe copiar la clave `service_role` a la aplicación. La clave publicable /
 - El acceso a columnas sensibles se limita con grants además de RLS. El
   inventario/costo no se modifica directamente: compras, ajustes, ventas,
   caja y gastos usan funciones transaccionales.
-- `register_sale` bloquea productos, recetas y materiales en orden estable,
+- `register_pos_sale` bloquea productos, recetas y materiales en orden estable,
   valida cantidades y existencias y guarda consumo, movimientos, costo/precio
   y fotografía de receta en una transacción PostgreSQL. Un error revierte toda
   la operación.
@@ -300,12 +311,12 @@ unit o dose); no se convierten gramos a mililitros.
 El empleado solo consulta fórmulas activas y puede registrar su fabricación
 asociada a una venta. Si hay un componente `fill_to_volume`, la pantalla exige
 el volumen real medido en ml por frasco antes de confirmar. La RPC
-`register_recipe_manufacture` vuelve a validar el usuario, fórmula activa,
-frasco correcto, cantidad medida, existencias, caja y pago, y en una sola
-transacción crea la venta, guarda la receta/costos/materiales usados y
-descuenta ingredientes y frascos. No crea ni incrementa stock de réplicas
-terminadas. El RPC anterior de ventas rechaza fórmulas con consumo variable
-para impedir que se omita el volumen medido.
+`register_pos_sale` valida identidad, fórmula activa, frasco correcto,
+consumo medido, existencias, caja y pago; en una sola transacción crea la
+venta, conserva la receta/costos/materiales usados y descuenta ingredientes y
+frascos. No crea ni incrementa stock de réplicas terminadas. La antigua RPC
+`register_recipe_manufacture` está revocada para concentrar las ventas en el
+flujo idempotente.
 
 Los administradores ven costo estimado, utilidad y margen con los costos
 promedio actuales. Si la fórmula tiene un componente variable, esas cifras
@@ -315,10 +326,40 @@ para leer costos, utilidades ni auditoría.
 
 El seed local incluye el ejemplo **DEMO - Winner Sport, 30 ml** como borrador
 editable: 15 g de esencia, 1 dosis de feromonas, alcohol `fill_to_volume` y
-1 frasco de 30 ml. No se crean fórmulas para otras presentaciones. Al cargar
-o desplegar migraciones, aplica
-`supabase/migrations/20261109210600_recipes_on_demand_manufacturing.sql`; no
-uses `--include-seed` en el proyecto remoto.
+1 frasco de 30 ml. No se crean fórmulas para otras presentaciones. Para
+publicar, aplica las migraciones versionadas hasta
+`supabase/migrations/20261110002700_financial_module.sql`; no uses
+`--include-seed` en el proyecto remoto.
+
+### Punto de venta
+
+La pantalla **Ventas** registra originales y productos 1.1 por unidades, y
+réplicas solo mediante una receta activa con la presentación correspondiente.
+El carrito mantiene los cambios localmente y no descuenta existencias hasta
+que PostgreSQL confirma la RPC transaccional `register_pos_sale`. Para
+componentes `fill_to_volume`, se solicita el consumo real por frasco, sin
+conversiones implícitas. Las existencias se vuelven a validar bajo bloqueo de
+filas; la operación completa, su instantánea de receta/costo/precio, los
+movimientos de inventario y el ingreso de caja se confirman o revierten en
+una sola transacción.
+
+Cada intento conserva una clave idempotente y una huella de la solicitud:
+reintentar el mismo payload devuelve la venta ya creada, mientras reutilizar
+la clave con otra solicitud se rechaza. Solo administradores pueden aplicar
+descuentos, configurar las etiquetas/habilitación de los cuatro métodos
+definidos por el enum actual, y anular o devolver ventas. Ambas operaciones
+revierten el valor total del pago, registran un ajuste y nunca borran la venta.
+La devolución monetaria en efectivo se registra como salida de caja del
+administrador; una reversión por otro método queda registrada y la operación
+externa debe completarse fuera de la aplicación. La restauración de inventario
+es opcional y debe seleccionarse únicamente si el producto/material fue
+recibido y es reutilizable; sus movimientos compensatorios conservan el costo
+histórico y recalculan el costo promedio ponderado. No hay devoluciones
+parciales ni tipos de pago nuevos sin una migración del enum.
+
+El historial muestra las últimas 100 ventas visibles para el usuario según
+RLS. Empleados no reciben permisos para leer costos, utilidades ni ajustes de
+ventas ajenas. Los comprobantes pueden imprimirse desde el navegador.
 
 Comprobaciones del frontend:
 
@@ -332,6 +373,68 @@ npm run build
 Para Cloudflare Pages o Vercel, publicar el directorio `dist` generado por
 `npm run build`.
 
-Las pruebas de permisos y fabricación de recetas se encuentran en
-`supabase/tests/database/003_recipes_security.sql` y se ejecutan localmente con
-`npx supabase test db`.
+Las pruebas de permisos de recetas y punto de venta se encuentran en
+`supabase/tests/database/003_recipes_security.sql` y
+`supabase/tests/database/004_point_of_sale_security.sql`, y se ejecutan
+localmente con `npx supabase test db`. La cobertura del adaptador cliente está
+en `src/features/sales/data.test.ts`.
+
+### Caja, gastos e informes financieros
+
+La sección **Caja** permite abrir y cerrar una sesión con saldo inicial,
+observaciones, ingresos adicionales, retiros de efectivo y conteo físico. Solo
+puede existir una sesión abierta por usuario. El efectivo esperado se calcula
+con apertura, ventas en efectivo, ingresos en efectivo, gastos pagados en
+efectivo y retiros; transferencias, tarjetas y otros medios se asocian a la
+sesión para informar ventas por método, pero no se suman al efectivo contado.
+Toda venta exige una caja abierta y queda enlazada a su sesión en PostgreSQL.
+
+Los **Gastos** son exclusivos del administrador y usan categorías editables;
+Arriendo, Servicios, Transporte, Empaques y Otros se crean inicialmente.
+Las categorías con historial se desactivan en vez de eliminarse. Los ingresos
+adicionales y movimientos de caja registran usuario, concepto, fecha, valor y
+observaciones. La interfaz usa RPCs transaccionales con validación de usuario,
+rol, método de pago habilitado y sesión abierta. RLS limita la lectura de caja
+al propietario de la sesión o al administrador; solo el administrador puede
+consultar gastos y reportes de utilidad.
+
+**Informes** permite períodos de día, semana, mes o fechas personalizadas
+(máximo 366 días). Separa ventas netas, costo histórico de venta, utilidad
+bruta, otros ingresos, gastos operativos y resultado neto. La utilidad usa el
+costo guardado en cada venta, no el costo promedio actual. No equivale al
+importe de ventas ni incluye el saldo de efectivo.
+
+La migración `supabase/migrations/20261110002700_financial_module.sql` aún debe
+aplicarse en cada entorno. No se ejecutó ni publicó desde este cambio. Las
+pruebas de privilegios están en
+`supabase/tests/database/005_financial_security.sql`.
+
+### Dashboard e informes operativos
+
+El dashboard usa la RPC `dashboard_metrics` para calcular indicadores en
+PostgreSQL a partir de ventas reales, inventario activo y sesiones de caja. El
+empleado solo recibe sus propias ventas, alertas operativas y datos de caja
+permitidos; las claves/campos de utilidad, costos y gastos son nulos para ese
+rol. Los administradores pueden consultar métricas de utilidad calculadas con
+el costo histórico conservado por venta.
+
+La sección **Informes** es exclusiva para el administrador y agrega datos en
+PostgreSQL mediante `admin_operational_report`. Permite rango de fechas de
+hasta 366 días, agrupación diaria/semanal/mensual, producto, categoría y
+empleado. Incluye ventas por tipo y método, comparación con el período anterior
+de igual duración, productos, consumo real de materiales, compras, gastos y
+movimientos de caja. Las consultas agregadas no descargan el historial completo
+al navegador. Los informes pueden exportarse a CSV e imprimirse; la impresión
+de comprobantes de venta se mantiene en el punto de venta.
+
+Las devoluciones registradas se descuentan del ingreso neto y las anulaciones
+con inventario restaurado no aportan costo reconocido. Cuando se filtra por
+producto/categoría y la devolución está registrada a nivel de venta, el RPC
+distribuye su valor proporcionalmente sobre el importe neto de las líneas
+seleccionadas; es una atribución solo para análisis, no modifica las ventas ni
+sus movimientos contables.
+
+`supabase/migrations/20261110005300_dashboard_analytics.sql` crea estas RPCs.
+Debe aplicarse después de las migraciones existentes; no se ha enviado al
+proyecto remoto. La prueba de permisos está en
+`supabase/tests/database/006_dashboard_analytics_security.sql`.

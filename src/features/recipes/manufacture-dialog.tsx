@@ -15,6 +15,7 @@ import { formatCop, formatQuantity } from "@/features/inventory/format";
 import { estimateManufactureCost } from "@/features/recipes/costing";
 import type { InventoryCost } from "@/features/inventory/types";
 import type { OpenCashSession, Recipe, RecipeCustomer } from "@/features/recipes/types";
+import type { PaymentMethod, PaymentMethodOption } from "@/features/sales/types";
 import { notify } from "@/lib/notifications";
 
 const unitLabels: Record<string, string> = {
@@ -31,6 +32,7 @@ export function ManufactureDialog({
   costs,
   customers,
   cashSessions,
+  paymentMethods,
   showFinancials,
   isSaving,
   onManufacture,
@@ -41,24 +43,31 @@ export function ManufactureDialog({
   costs: InventoryCost[];
   customers: RecipeCustomer[];
   cashSessions: OpenCashSession[];
+  paymentMethods: PaymentMethodOption[];
   showFinancials: boolean;
   isSaving: boolean;
   onManufacture: (input: {
     recipe_id: string;
     quantity: number;
     fill_consumption_ml: number | null;
-    payment_method: "cash" | "transfer" | "card" | "other";
+    payment_method: PaymentMethod;
     customer_id: string | null;
     cash_session_id: string | null;
     notes: string;
+    idempotency_key: string;
   }) => Promise<void>;
 }) {
   const [quantity, setQuantity] = useState("1");
   const [fillConsumption, setFillConsumption] = useState("");
   const [customerId, setCustomerId] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<"cash" | "transfer" | "card" | "other">("transfer");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | "">("");
   const [cashSessionId, setCashSessionId] = useState("");
   const [notes, setNotes] = useState("");
+  const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
+  const enabledPaymentMethods = paymentMethods.filter((method) => method.enabled);
+  const hasEnabledPaymentMethod = enabledPaymentMethods.some(
+    (method) => method.method === paymentMethod,
+  );
   const count = Number(quantity);
   const fillComponent = recipe?.recipe_components.find(
     (component) => component.mode === "fill_to_volume",
@@ -118,12 +127,12 @@ export function ManufactureDialog({
       notify.error("Esta fórmula no tiene un componente de volumen variable.");
       return;
     }
-    if (paymentMethod === "cash" && !cashSessionId) {
-      notify.error("Selecciona una caja abierta para registrar el pago en efectivo.");
+    if (!cashSessionId) {
+      notify.error("Selecciona una caja abierta para asociar la venta.");
       return;
     }
-    if (paymentMethod !== "cash" && cashSessionId) {
-      notify.error("La caja solo aplica para pagos en efectivo.");
+    if (!paymentMethod || !hasEnabledPaymentMethod) {
+      notify.error("Selecciona un método de pago habilitado.");
       return;
     }
     if (stockShortages.length) {
@@ -139,7 +148,9 @@ export function ManufactureDialog({
         customer_id: customerId || null,
         cash_session_id: paymentMethod === "cash" ? cashSessionId || null : null,
         notes,
+        idempotency_key: idempotencyKey,
       });
+      setIdempotencyKey(crypto.randomUUID());
     } catch {
       return;
     }
@@ -149,14 +160,16 @@ export function ManufactureDialog({
     <Dialog
       open={open}
       onOpenChange={(nextOpen) => {
+        if (isSaving) return;
         onOpenChange(nextOpen);
         if (!nextOpen) {
           setQuantity("1");
           setFillConsumption("");
           setCustomerId("");
-          setPaymentMethod("transfer");
+          setPaymentMethod("");
           setCashSessionId("");
           setNotes("");
+          setIdempotencyKey(crypto.randomUUID());
         }
       }}
     >
@@ -201,9 +214,13 @@ export function ManufactureDialog({
                 {(props) => (
                   <Input
                     {...props}
+                    disabled={isSaving}
                     inputMode="numeric"
                     min="1"
-                    onChange={(event) => setQuantity(event.target.value)}
+                    onChange={(event) => {
+                      setQuantity(event.target.value);
+                      setIdempotencyKey(crypto.randomUUID());
+                    }}
                     step="1"
                     type="number"
                     value={quantity}
@@ -219,10 +236,14 @@ export function ManufactureDialog({
                   {(props) => (
                     <Input
                       {...props}
+                      disabled={isSaving}
                       inputMode="decimal"
                       min="0.0001"
                       max={maximumFillMl}
-                      onChange={(event) => setFillConsumption(event.target.value)}
+                      onChange={(event) => {
+                        setFillConsumption(event.target.value);
+                        setIdempotencyKey(crypto.randomUUID());
+                      }}
                       placeholder="Ej. volumen medido"
                       step="0.0001"
                       type="number"
@@ -235,8 +256,12 @@ export function ManufactureDialog({
                 {(props) => (
                   <select
                     {...props}
+                    disabled={isSaving}
                     className="h-10 w-full rounded-lg border border-border bg-card px-3 text-sm"
-                    onChange={(event) => setCustomerId(event.target.value)}
+                    onChange={(event) => {
+                      setCustomerId(event.target.value);
+                      setIdempotencyKey(crypto.randomUUID());
+                    }}
                     value={customerId}
                   >
                     <option value="">Venta sin cliente asociado</option>
@@ -250,28 +275,32 @@ export function ManufactureDialog({
                 {(props) => (
                   <select
                     {...props}
+                    disabled={isSaving}
                     className="h-10 w-full rounded-lg border border-border bg-card px-3 text-sm"
                     onChange={(event) => {
-                      const next = event.target.value as typeof paymentMethod;
+                      const next = event.target.value as PaymentMethod | "";
                       setPaymentMethod(next);
-                      if (next !== "cash") setCashSessionId("");
+                      setIdempotencyKey(crypto.randomUUID());
                     }}
                     value={paymentMethod}
                   >
-                    <option value="cash">Efectivo</option>
-                    <option value="transfer">Transferencia</option>
-                    <option value="card">Tarjeta</option>
-                    <option value="other">Otro</option>
+                    <option value="">Selecciona un método</option>
+                    {enabledPaymentMethods.map((method) => (
+                      <option key={method.method} value={method.method}>{method.label}</option>
+                    ))}
                   </select>
                 )}
               </FormField>
-              {paymentMethod === "cash" ? (
-                <FormField label="Caja abierta" required>
+              <FormField label="Caja abierta" required>
                   {(props) => (
                     <select
                       {...props}
+                      disabled={isSaving}
                       className="h-10 w-full rounded-lg border border-border bg-card px-3 text-sm"
-                      onChange={(event) => setCashSessionId(event.target.value)}
+                      onChange={(event) => {
+                        setCashSessionId(event.target.value);
+                        setIdempotencyKey(crypto.randomUUID());
+                      }}
                       value={cashSessionId}
                     >
                       <option value="">Selecciona una caja</option>
@@ -281,14 +310,17 @@ export function ManufactureDialog({
                     </select>
                   )}
                 </FormField>
-              ) : null}
               <FormField label="Notas (opcional)" className="sm:col-span-2">
                 {(props) => (
                   <textarea
                     {...props}
+                    disabled={isSaving}
                     className="min-h-20 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm"
                     maxLength={1000}
-                    onChange={(event) => setNotes(event.target.value)}
+                    onChange={(event) => {
+                      setNotes(event.target.value);
+                      setIdempotencyKey(crypto.randomUUID());
+                    }}
                     value={notes}
                   />
                 )}
@@ -323,8 +355,8 @@ export function ManufactureDialog({
             ) : null}
 
             <div className="flex justify-end gap-2">
-              <Button onClick={() => onOpenChange(false)} type="button" variant="outline">Cancelar</Button>
-              <Button disabled={isSaving || stockShortages.length > 0 || !validCount || (paymentMethod === "cash" && !cashSessions.length)} type="submit">
+              <Button disabled={isSaving} onClick={() => onOpenChange(false)} type="button" variant="outline">Cancelar</Button>
+              <Button disabled={isSaving || stockShortages.length > 0 || !validCount || !hasEnabledPaymentMethod || !cashSessions.length} type="submit">
                 {isSaving ? "Confirmando…" : "Confirmar fabricación y venta"}
               </Button>
             </div>

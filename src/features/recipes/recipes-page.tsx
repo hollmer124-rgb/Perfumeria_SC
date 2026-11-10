@@ -26,6 +26,7 @@ import { ManufactureDialog } from "@/features/recipes/manufacture-dialog";
 import { RecipeFormDialog } from "@/features/recipes/recipe-form-dialog";
 import type { Recipe, RecipeSaveInput } from "@/features/recipes/types";
 import { notify } from "@/lib/notifications";
+import { fetchPaymentMethods, salesQueryKeys } from "@/features/sales/data";
 
 const unitLabels: Record<string, string> = {
   g: "g",
@@ -80,6 +81,10 @@ export function RecipesPage() {
     queryKey: [...recipeQueryKeys.cashSessions, profile?.id],
     queryFn: () => fetchOpenCashSessions(profile?.id ?? ""),
     enabled: Boolean(profile?.id),
+  });
+  const paymentMethods = useQuery({
+    queryKey: salesQueryKeys.paymentMethods,
+    queryFn: fetchPaymentMethods,
   });
 
   const invalidateRecipes = async () => {
@@ -154,6 +159,7 @@ export function RecipesPage() {
     perfumes.isLoading ||
     customers.isLoading ||
     cashSessions.isLoading ||
+    paymentMethods.isLoading ||
     (isAdmin && costs.isLoading);
   const hasError =
     recipes.isError ||
@@ -161,6 +167,7 @@ export function RecipesPage() {
     perfumes.isError ||
     customers.isError ||
     cashSessions.isError ||
+    paymentMethods.isError ||
     (isAdmin && costs.isError);
   const activeCount = (recipes.data ?? []).filter((recipe) => recipe.status === "active").length;
   const draftCount = (recipes.data ?? []).filter((recipe) => recipe.status === "draft").length;
@@ -405,6 +412,7 @@ export function RecipesPage() {
         cashSessions={cashSessions.data ?? []}
         costs={isAdmin ? costs.data ?? [] : []}
         customers={customers.data ?? []}
+        paymentMethods={paymentMethods.data ?? []}
         isSaving={manufactureMutation.isPending}
         onManufacture={async (input) => {
           await manufactureMutation.mutateAsync(input);
