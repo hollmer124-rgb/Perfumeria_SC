@@ -86,6 +86,16 @@ function renderProtectedPath(path: string) {
             }
           />
           <Route
+            path="/recetas"
+            element={
+              <ProtectedRoute>
+                <RequireRole allowedRoles={["admin", "employee"]}>
+                  <p>Consulta de recetas activas</p>
+                </RequireRole>
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/configuracion"
             element={
               <ProtectedRoute>
@@ -141,6 +151,12 @@ describe("protected routes", () => {
     renderProtectedPath("/ventas");
 
     expect(await screen.findByText("Punto de venta")).toBeInTheDocument();
+  });
+
+  it("allows an employee to open active recipe consultation directly", async () => {
+    renderProtectedPath("/recetas");
+
+    expect(await screen.findByText("Consulta de recetas activas")).toBeInTheDocument();
   });
 
   it("allows an administrator to open administrative routes", async () => {

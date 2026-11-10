@@ -17,6 +17,28 @@ import {
   RequireRole,
 } from "@/features/auth/auth-guards";
 import { employeeAllowedPaths } from "@/features/auth/permissions";
+import { ProductsPage } from "@/features/inventory/products-page";
+import { InventoryPage } from "@/features/inventory/inventory-page";
+import { PurchasesPage } from "@/features/inventory/purchases-page";
+import { SuppliersPage } from "@/features/inventory/suppliers-page";
+import { RecipesPage } from "@/features/recipes/recipes-page";
+
+function renderModule(module: (typeof adminModules)[number]) {
+  switch (module.path) {
+    case "/productos":
+      return <ProductsPage />;
+    case "/inventario":
+      return <InventoryPage />;
+    case "/compras":
+      return <PurchasesPage />;
+    case "/proveedores":
+      return <SuppliersPage />;
+    case "/recetas":
+      return <RecipesPage />;
+    default:
+      return <ModulePage module={module} />;
+  }
+}
 
 function authPage(element: ReactNode) {
   return <Suspense fallback={<AuthLoading />}>{element}</Suspense>;
@@ -61,7 +83,7 @@ export const router = createBrowserRouter([
                 : ["admin"]
             }
           >
-            <ModulePage module={module} />
+            {renderModule(module)}
           </RequireRole>
         ),
       })),

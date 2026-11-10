@@ -34,6 +34,7 @@ describe("admin navigation", () => {
       "/dashboard",
       "/ventas",
       "/inventario",
+      "/recetas",
       "/clientes",
       "/caja",
     ]);
