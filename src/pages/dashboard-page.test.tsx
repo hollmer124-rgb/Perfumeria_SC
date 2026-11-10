@@ -1,7 +1,11 @@
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { DashboardPage } from "@/pages/dashboard-page";
+
+vi.mock("@/features/auth/use-auth", () => ({
+  useAuth: () => ({ profile: { role: "admin" } }),
+}));
 
 describe("DashboardPage", () => {
   it("shows a provisional empty state without fabricated activity", () => {

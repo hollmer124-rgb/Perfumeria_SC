@@ -9,6 +9,7 @@ import { Link } from "react-router-dom";
 import { OverviewCard } from "@/features/dashboard/components/overview-card";
 import { QuickAccess } from "@/features/dashboard/components/quick-access";
 import { RecentActivity } from "@/features/dashboard/components/recent-activity";
+import { useAuth } from "@/features/auth/use-auth";
 
 const overviewItems = [
   { label: "Ventas del día", icon: ShoppingBag },
@@ -18,6 +19,9 @@ const overviewItems = [
 ];
 
 export function DashboardPage() {
+  const { profile } = useAuth();
+  const primaryLink = profile?.role === "admin" ? "/productos" : "/ventas";
+
   return (
     <div className="space-y-8 sm:space-y-10">
       <section className="flex flex-col gap-2">
@@ -65,7 +69,7 @@ export function DashboardPage() {
             y conectados a datos reales.
           </p>
           <Link
-            to="/productos"
+            to={primaryLink}
             className="mt-6 inline-flex min-h-10 items-center gap-2 rounded-lg border border-white/20 px-3.5 text-xs font-medium text-white transition-colors hover:border-[#d3bd8e]/60 hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d3bd8e]"
           >
             Explorar módulos

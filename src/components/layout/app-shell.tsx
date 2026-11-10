@@ -1,10 +1,14 @@
 import { useState } from "react";
-import { Gem, Menu } from "lucide-react";
+import { Gem, LogOut, Menu } from "lucide-react";
 import { NavLink, Outlet } from "react-router-dom";
 import { appConfig } from "@/lib/app-config";
 import { useActivePageTitle } from "@/hooks/use-active-page-title";
-import { navigationGroups } from "@/features/navigation/navigation-items";
+import { getNavigationGroupsForRole } from "@/features/navigation/navigation-items";
+import { useAuth } from "@/features/auth/use-auth";
+import { roleLabel } from "@/features/auth/permissions";
 import { Button } from "@/components/ui/button";
+import { useQueryClient } from "@tanstack/react-query";
+import { notify } from "@/lib/notifications";
 import {
   Dialog,
   DialogContent,
@@ -32,7 +36,15 @@ function Brand() {
   );
 }
 
-function NavigationLinks({ onNavigate }: { onNavigate?: () => void }) {
+function NavigationLinks({
+  role,
+  onNavigate,
+}: {
+  role: "admin" | "employee";
+  onNavigate?: () => void;
+}) {
+  const navigationGroups = getNavigationGroupsForRole(role);
+
   return (
     <nav aria-label="Navegación principal" className="space-y-6">
       {navigationGroups.map((group) => (
@@ -85,25 +97,25 @@ function NavigationLinks({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-function Sidebar() {
+function Sidebar({ role }: { role: "admin" | "employee" }) {
   return (
     <aside className="fixed inset-y-0 left-0 z-30 hidden w-[264px] flex-col border-r border-border bg-card lg:flex">
       <div className="flex h-[76px] items-center border-b border-border px-6">
         <Brand />
       </div>
       <div className="flex-1 overflow-y-auto px-4 py-6">
-        <NavigationLinks />
+        <NavigationLinks role={role} />
       </div>
       <div className="border-t border-border px-6 py-4">
         <p className="text-[11px] leading-5 text-muted-foreground">
-          Interfaz inicial. Los módulos se habilitarán por fases.
+          Sesión protegida · {roleLabel(role)}
         </p>
       </div>
     </aside>
   );
 }
 
-function MobileNavigation() {
+function MobileNavigation({ role }: { role: "admin" | "employee" }) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -131,7 +143,7 @@ function MobileNavigation() {
           </DialogDescription>
         </DialogHeader>
         <div className="overflow-y-auto px-4 py-6">
-          <NavigationLinks onNavigate={() => setOpen(false)} />
+          <NavigationLinks role={role} onNavigate={() => setOpen(false)} />
         </div>
       </DialogContent>
     </Dialog>
@@ -140,15 +152,27 @@ function MobileNavigation() {
 
 export function AppShell() {
   const pageTitle = useActivePageTitle();
+  const { profile, session, signOut } = useAuth();
+  const queryClient = useQueryClient();
+  const role = profile?.role ?? "employee";
+
+  async function handleSignOut() {
+    try {
+      await signOut();
+      queryClient.clear();
+    } catch {
+      notify.error("No se pudo cerrar la sesión. Inténtalo de nuevo.");
+    }
+  }
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <Sidebar />
+      <Sidebar role={role} />
       <div className="min-h-screen lg:pl-[264px]">
         <header className="sticky top-0 z-20 flex h-[68px] items-center justify-between border-b border-border bg-background/95 px-4 backdrop-blur sm:px-7 lg:h-[76px] lg:px-10">
           <div className="flex min-w-0 items-center gap-2 sm:gap-4">
             <div className="lg:hidden">
-              <MobileNavigation />
+              <MobileNavigation role={role} />
             </div>
             <span className="truncate text-sm font-semibold tracking-tight">
               {pageTitle}
@@ -158,10 +182,23 @@ export function AppShell() {
               Panel de administración
             </span>
           </div>
-          <span className="inline-flex shrink-0 items-center gap-2 rounded-full border border-gold/20 bg-gold-soft px-2.5 py-1.5 text-[10px] font-medium text-foreground sm:px-3 sm:text-[11px]">
-            <span className="size-1.5 rounded-full bg-gold" />
-            Vista inicial
-          </span>
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="hidden max-w-36 truncate text-xs text-muted-foreground sm:block">
+              {profile?.display_name || session?.user.email}
+            </span>
+            <span className="hidden rounded-full border border-gold/20 bg-gold-soft px-2.5 py-1.5 text-[10px] font-medium text-foreground md:inline-flex">
+              {roleLabel(role)}
+            </span>
+            <Button
+              aria-label="Cerrar sesión"
+              className="px-2.5 text-xs sm:px-3"
+              onClick={() => void handleSignOut()}
+              variant="outline"
+            >
+              <LogOut aria-hidden="true" size={15} />
+              <span className="hidden sm:inline">Salir</span>
+            </Button>
+          </div>
         </header>
         <main className="mx-auto w-full max-w-[1440px] px-4 py-7 sm:px-7 sm:py-9 lg:px-10 lg:py-10">
           <Outlet />

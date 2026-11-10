@@ -1,9 +1,16 @@
 import { ArrowUpRight } from "lucide-react";
 import { Link } from "react-router-dom";
 import { quickAccessModules } from "@/features/navigation/navigation-items";
+import { useAuth } from "@/features/auth/use-auth";
 import { Card } from "@/components/ui/card";
+import { canAccessPath } from "@/features/auth/permissions";
 
 export function QuickAccess() {
+  const { profile } = useAuth();
+  const modules = quickAccessModules.filter(
+    ({ path }) => profile && canAccessPath(profile.role, path),
+  );
+
   return (
     <section aria-labelledby="quick-access-title" className="space-y-4">
       <div>
@@ -18,7 +25,7 @@ export function QuickAccess() {
         </h2>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {quickAccessModules.map(({ path, title, description, icon: Icon }) => (
+        {modules.map(({ path, title, description, icon: Icon }) => (
           <Link
             key={path}
             to={path}

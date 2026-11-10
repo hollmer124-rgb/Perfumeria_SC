@@ -12,6 +12,7 @@ import {
   WalletCards,
 } from "lucide-react";
 import type { AdminNavigationGroup } from "@/types/navigation";
+import { canAccessPath, type AppRole } from "@/features/auth/permissions";
 
 export const navigationGroups: AdminNavigationGroup[] = [
   {
@@ -122,3 +123,12 @@ export const adminModules = allNavigationItems.filter(
 );
 
 export const quickAccessModules = adminModules.slice(0, 4);
+
+export function getNavigationGroupsForRole(role: AppRole) {
+  return navigationGroups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => canAccessPath(role, item.path)),
+    }))
+    .filter((group) => group.items.length > 0);
+}

@@ -1,0 +1,236 @@
+# Modelo entidad-relación — Perfumeria SC
+
+Este documento describe el modelo relacional inicial de Supabase PostgreSQL.
+Las cantidades son `NUMERIC`; los importes expresados en COP son enteros. Las
+recetas guardan cantidades en la unidad base de cada material y nunca convierten
+entre gramos y mililitros.
+
+```mermaid
+erDiagram
+    auth_users ||--|| profiles : "id"
+    profiles ||--o{ sales : creates
+    profiles ||--o{ purchases : records
+    profiles ||--o{ expenses : records
+    profiles ||--o{ cash_sessions : opens
+    profiles ||--o{ inventory_movements : records
+    profiles ||--o{ audit_logs : acts
+
+    perfumes ||--o{ retail_products : references
+    perfumes ||--o{ recipes : has
+    recipes ||--|{ recipe_components : defines
+    materials ||--o{ recipe_components : consumed
+
+    customers ||--o{ sales : places
+    suppliers ||--o{ purchases : supplies
+
+    sales ||--|{ sale_items : contains
+    retail_products ||--o{ sale_items : sold
+    recipes ||--o{ sale_items : prepared
+    sale_items ||--o{ sale_material_usage : consumes
+    materials ||--o{ sale_material_usage : used
+    cash_sessions ||--o{ sales : settles
+    cash_sessions ||--o{ cash_movements : records
+
+    purchases ||--|{ purchase_items : contains
+    materials ||--o{ purchase_items : replenishes
+    retail_products ||--o{ purchase_items : replenishes
+    purchase_items ||--o{ inventory_movements : posts
+    sale_items ||--o{ inventory_movements : posts
+    materials ||--o{ inventory_movements : tracks
+    retail_products ||--o{ inventory_movements : tracks
+
+    expenses ||--o{ cash_movements : paid_from
+
+    profiles {
+        uuid id PK,FK
+        app_role role
+        text display_name
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    perfumes {
+        uuid id PK
+        text name
+        text brand
+        boolean active
+    }
+    retail_products {
+        uuid id PK
+        uuid perfume_id FK
+        text product_type
+        text sku UK
+        bigint price_cop
+        numeric stock_qty
+        bigint avg_unit_cost_cop
+    }
+    materials {
+        uuid id PK
+        material_unit base_unit
+        numeric on_hand_qty
+        bigint avg_unit_cost_cop
+    }
+    recipes {
+        uuid id PK
+        uuid perfume_id FK
+        integer size_ml
+        integer version
+        recipe_status status
+        bigint price_cop
+    }
+    recipe_components {
+        uuid id PK
+        uuid recipe_id FK
+        uuid material_id FK
+        component_mode mode
+        numeric quantity
+    }
+    customers {
+        uuid id PK
+        text full_name
+        text phone
+    }
+    suppliers {
+        uuid id PK
+        text name
+        text tax_id
+    }
+    sales {
+        uuid id PK
+        bigint sale_number UK
+        uuid created_by FK
+        uuid customer_id FK
+        uuid cash_session_id FK
+        bigint total_cop
+        bigint total_cost_cop
+        payment_method payment_method
+    }
+    sale_items {
+        uuid id PK
+        uuid sale_id FK
+        uuid retail_product_id FK
+        uuid recipe_id FK
+        numeric quantity
+        bigint unit_price_cop
+        bigint line_cost_cop
+        jsonb recipe_snapshot
+    }
+    sale_material_usage {
+        uuid id PK
+        uuid sale_item_id FK
+        uuid material_id FK
+        numeric quantity_used
+        bigint total_cost_cop
+    }
+    purchases {
+        uuid id PK
+        uuid supplier_id FK
+        uuid created_by FK
+        purchase_status status
+        bigint total_cop
+    }
+    purchase_items {
+        uuid id PK
+        uuid purchase_id FK
+        uuid material_id FK
+        uuid retail_product_id FK
+        numeric quantity
+        bigint unit_cost_cop
+        bigint line_total_cop
+    }
+    inventory_movements {
+        uuid id PK
+        uuid material_id FK
+        uuid retail_product_id FK
+        uuid sale_item_id FK
+        uuid purchase_item_id FK
+        numeric quantity_delta
+        bigint unit_cost_cop
+        bigint total_cost_cop
+    }
+    expenses {
+        uuid id PK
+        uuid created_by FK
+        bigint amount_cop
+        date expense_date
+    }
+    cash_sessions {
+        uuid id PK
+        uuid opened_by FK
+        timestamptz opened_at
+        timestamptz closed_at
+        bigint opening_cop
+        bigint counted_cop
+    }
+    cash_movements {
+        uuid id PK
+        uuid cash_session_id FK
+        uuid expense_id FK
+        uuid sale_id FK
+        bigint amount_cop
+    }
+    audit_logs {
+        bigint id PK
+        uuid actor_id FK
+        text action
+        text table_name
+        jsonb old_data
+        jsonb new_data
+        timestamptz created_at
+    }
+```
+
+## Relaciones y reglas de dominio
+
+- `profiles.id` referencia uno a uno `auth.users.id`; el rol no se toma de
+  `user_metadata` ni puede ser autoseleccionado por un usuario.
+- `perfumes` es el catálogo de fragancias. `retail_products` guarda las
+  referencias terminadas originales y 1.1 vendidas por unidad; las recetas se
+  asocian al perfume y a una presentación en ml.
+- Una receta tiene versiones `draft`, `active` o `archived`; solo puede haber
+  una versión activa por perfume y tamaño. Para modificar una receta activa se
+  crea una versión borrador, se editan sus componentes y se activa mediante
+  función transaccional.
+- Un componente `fixed` tiene cantidad positiva en la unidad base del material.
+  Como máximo un componente puede ser `fill_to_volume` por receta; debe usar
+  material `ml` y su cantidad se calcula al vender como tamaño de la receta
+  menos los componentes fijos que también usan `ml`. Una cantidad no positiva
+  invalida la operación. No se convierte g a ml ni se infiere una receta.
+- `materials` y `retail_products` conservan existencias y costo promedio
+  ponderado en COP/unidad, con redondeo explícito a COP entero. Las entradas y
+  salidas se registran en `inventory_movements`; no se permiten ajustes de
+  inventario sin una función transaccional autorizada.
+- Cada línea de venta referencia producto terminado **o** receta (exclusivo).
+  Copia nombre, presentación, precio, costo y, cuando aplica, versión y
+  componentes de receta. `sale_material_usage` conserva el consumo efectivo y
+  el costo de cada material. Cambios futuros no alteran la venta histórica.
+- El empleado puede consultar sus ventas y registrar ventas; sus permisos SQL
+  no incluyen columnas de costos, márgenes ni utilidades. `recipe_components`,
+  inventario de materiales, compras, gastos y auditoría quedan restringidos al
+  administrador.
+- `purchases`/`purchase_items` se preparan como borrador y una función registra
+  su recepción junto con existencias, promedio ponderado y movimientos en una
+  sola transacción.
+- Las tablas de caja vinculan sesiones con ventas en efectivo, gastos y
+  movimientos. Los importes de ventas son ingresos, no utilidades; los costos
+  y gastos siguen sin estar disponibles para el rol empleado.
+
+## Seguridad y auditoría
+
+RLS se habilita en todas las tablas de `public`; `anon` no recibe permisos de
+tabla. Las políticas consultan un helper no expuesto por PostgREST que deriva
+el rol del perfil cuyo id es exactamente `auth.uid()`. Funciones
+`SECURITY DEFINER` fijan `search_path`, validan usuario/rol internamente y solo
+ejecutan la operación para el propio contexto autenticado. La aplicación no
+usa ni almacena claves `service_role`.
+
+Los movimientos de inventario y los registros de auditoría son append-only
+para los clientes. Triggers registran cambios administrativos de catálogo,
+recetas, compras, gastos, perfiles y caja, además de las operaciones
+transaccionales. Solo el administrador puede consultar el log, que puede
+contener instantáneas sensibles.
+
+## Migraciones
+
+Las migraciones ordenadas en `supabase/migrations/` son la fuente de verdad
+ejecutable. La guía de ejecución y del primer administrador está en el
+`README.md` raíz.
