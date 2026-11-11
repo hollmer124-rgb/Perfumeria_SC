@@ -236,13 +236,42 @@ No hay registro público ni perfil autoasignable. En Supabase Dashboard:
 1. Con el registro público desactivado, crea el primer usuario en
    Authentication → Users → Add user. Conserva su UUID; no pongas contraseñas
    en SQL, migraciones, variables frontend o logs.
-2. En SQL Editor, crea su perfil como administrador usando el UUID creado:
+2. En el SQL Editor de la instancia local, crea su perfil como administrador
+   usando el correo del usuario. La auditoría exige el contexto de mantenimiento
+   privilegiado y todas las sentencias deben ejecutarse en la misma transacción:
 
    ```sql
-   insert into public.profiles (id, role, display_name)
-   select id, 'admin', 'Administrador inicial'
-   from auth.users
-   where id = '<AUTH_USER_UUID>';
+   begin;
+
+   select private.begin_system_maintenance(
+     'Bootstrap initial local administrator profile'
+   );
+
+   do $bootstrap$
+   declare
+     v_user_id uuid;
+   begin
+     select id
+       into v_user_id
+       from auth.users
+      where lower(email) = lower('CORREO_DEL_USUARIO');
+
+     if v_user_id is null then
+       raise exception 'No Auth user exists with the supplied email';
+     end if;
+
+     if exists (select 1 from public.profiles where id = v_user_id) then
+       raise exception 'The Auth user already has a profile';
+     end if;
+
+     insert into public.profiles (id, role, display_name)
+     values (v_user_id, 'admin', 'Administrador inicial');
+   end;
+   $bootstrap$;
+
+   select private.end_system_maintenance();
+
+   commit;
    ```
 
 3. Para empleados, crea cada usuario de forma administrativa en Auth y añade
