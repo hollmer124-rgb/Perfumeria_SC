@@ -6,6 +6,7 @@ export const employeeAllowedPaths = new Set([
   "/inventario",
   "/recetas",
   "/clientes",
+  "/configuracion",
   "/caja",
 ]);
 

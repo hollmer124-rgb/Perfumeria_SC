@@ -152,6 +152,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { error: signOutError } = await client.auth.signOut();
         if (signOutError) throw signOutError;
       },
+      async refreshProfile() {
+        const client = supabase;
+        if (!client || !session) {
+          throw new Error("No hay una sesión autenticada para actualizar el perfil.");
+        }
+        const { data, error: profileError } = await client
+          .from("profiles")
+          .select("id, role, display_name")
+          .eq("id", session.user.id)
+          .single();
+        if (profileError) throw profileError;
+        if (!isUserProfile(data, session.user.id)) {
+          throw new Error("El perfil recibido no tiene un formato válido.");
+        }
+        setProfile(data);
+      },
       async requestPasswordReset(email: string) {
         const client = supabase;
         if (!client) throw new Error("Supabase Auth no está configurado.");

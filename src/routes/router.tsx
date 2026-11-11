@@ -26,6 +26,8 @@ import { PosPage } from "@/features/sales/pos-page";
 import { CashPage } from "@/features/financial/cash-page";
 import { ExpensesPage } from "@/features/financial/expenses-page";
 import { ReportsPage } from "@/features/financial/reports-page";
+import { CustomersPage } from "@/features/customers/customers-page";
+import { SettingsPage } from "@/features/settings/settings-page";
 
 function renderModule(module: (typeof adminModules)[number]) {
   switch (module.path) {
@@ -47,6 +49,10 @@ function renderModule(module: (typeof adminModules)[number]) {
       return <ExpensesPage />;
     case "/informes":
       return <ReportsPage />;
+    case "/clientes":
+      return <CustomersPage />;
+    case "/configuracion":
+      return <SettingsPage />;
     default:
       return <ModulePage module={module} />;
   }

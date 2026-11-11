@@ -2,7 +2,7 @@ create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(12);
+select plan(15);
 
 insert into auth.users (
   instance_id,
@@ -140,6 +140,63 @@ select ok(
 select ok(
   not has_table_privilege('anon', 'public.customers', 'UPDATE'),
   'anonymous clients cannot update customer records'
+);
+
+set local role authenticated;
+select set_config(
+  'request.jwt.claim.sub',
+  '97000000-0000-4000-8000-000000000001',
+  true
+);
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"97000000-0000-4000-8000-000000000001","role":"authenticated"}',
+  true
+);
+insert into public.customers (id, full_name, created_by)
+values (
+  '97000000-0000-4000-8000-000000000013',
+  'New owner customer',
+  '97000000-0000-4000-8000-000000000001'
+);
+reset role;
+
+select is(
+  (select created_by::text from public.customers
+    where id = '97000000-0000-4000-8000-000000000013'),
+  '97000000-0000-4000-8000-000000000001',
+  'an employee can create a customer assigned to their own identity'
+);
+
+set local role authenticated;
+select set_config(
+  'request.jwt.claim.sub',
+  '97000000-0000-4000-8000-000000000001',
+  true
+);
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"97000000-0000-4000-8000-000000000001","role":"authenticated"}',
+  true
+);
+select throws_ok(
+  $$insert into public.customers (id, full_name, created_by)
+    values (
+      '97000000-0000-4000-8000-000000000014',
+      'Forged owner customer',
+      '97000000-0000-4000-8000-000000000002'
+    )$$,
+  '42501',
+  'new row violates row-level security policy for table "customers"',
+  'an employee cannot create a customer assigned to another identity'
+);
+reset role;
+
+select is(
+  (select count(*)::integer from public.customers
+    where id = '97000000-0000-4000-8000-000000000014'),
+  0,
+  'a rejected customer insert leaves no forged-owner record'
 );
 
 set local role authenticated;

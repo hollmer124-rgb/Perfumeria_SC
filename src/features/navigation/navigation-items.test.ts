@@ -37,6 +37,7 @@ describe("admin navigation", () => {
       "/recetas",
       "/clientes",
       "/caja",
+      "/configuracion",
     ]);
   });
 });

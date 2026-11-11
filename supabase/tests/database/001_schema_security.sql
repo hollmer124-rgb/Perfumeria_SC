@@ -7,17 +7,17 @@ begin;
 select plan(31);
 
 select ok(
-  (select count(*) = 22
+  (select count(*) = 23
      from pg_class c
      join pg_namespace n on n.oid = c.relnamespace
     where n.nspname = 'public'
       and c.relkind = 'r'
       and c.relrowsecurity),
-  'RLS is enabled on all 22 application tables'
+  'RLS is enabled on all 23 application tables'
 );
 
 select ok(
-  (select count(distinct tablename) = 22
+  (select count(distinct tablename) = 23
      from pg_policies
     where schemaname = 'public'),
   'every application table has at least one policy'
@@ -32,7 +32,7 @@ select ok(
         'sale_material_usage', 'purchases', 'purchase_items',
         'inventory_movements', 'expenses', 'cash_sessions', 'cash_movements',
         'audit_logs', 'payment_method_settings', 'sale_adjustments',
-        'expense_categories', 'financial_incomes'
+        'expense_categories', 'financial_incomes', 'business_settings'
       ]) as t(table_name)
      where has_table_privilege(
        'anon', format('public.%I', t.table_name), 'SELECT'

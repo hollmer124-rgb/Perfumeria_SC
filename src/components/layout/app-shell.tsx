@@ -1,9 +1,14 @@
 import { useState } from "react";
 import { Gem, LogOut, Menu } from "lucide-react";
 import { NavLink, Outlet } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { appConfig } from "@/lib/app-config";
 import { useActivePageTitle } from "@/hooks/use-active-page-title";
 import { getNavigationGroupsForRole } from "@/features/navigation/navigation-items";
+import {
+  fetchBusinessSettings,
+  settingsQueryKeys,
+} from "@/features/settings/data";
 import { useAuth } from "@/features/auth/use-auth";
 import { roleLabel } from "@/features/auth/permissions";
 import { Button } from "@/components/ui/button";
@@ -19,6 +24,11 @@ import {
 } from "@/components/ui/dialog";
 
 function Brand() {
+  const business = useQuery({
+    queryKey: settingsQueryKeys.business,
+    queryFn: fetchBusinessSettings,
+  });
+
   return (
     <div className="flex items-center gap-3">
       <span className="flex size-10 items-center justify-center rounded-xl border border-gold/25 bg-gold-soft text-gold">
@@ -26,7 +36,7 @@ function Brand() {
       </span>
       <span className="min-w-0">
         <span className="block truncate font-serif text-[1.04rem] font-semibold tracking-wide text-foreground">
-          {appConfig.name}
+          {business.data?.business_name ?? appConfig.name}
         </span>
         <span className="mt-0.5 block text-[9px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
           Administración
