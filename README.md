@@ -163,13 +163,7 @@ transacción; una falla revierte tanto los datos como la auditoría.
 
    ```bash
    npx supabase migration list --remote
-   npx supabase db pushVoy a confirmar primero el historial remoto y el alcance exacto del `db push --remote --dry-run`. Si el ensayo incluye únicamente la migración financiera nueva, la publicaré sin seed y verificaré después que figure aplicada.
-
-Ran terminal command: npx supabase migration list --remote
-
-Ran terminal command: npx supabase db push --remote --dry-run
-
-Ran terminal command: npx supabase db push --remote --yes
+   npx supabase db push --remote --dry-run
    ```
 
 `npx supabase migration list` sin `--remote` consulta la base local en
@@ -183,6 +177,11 @@ fixtures exclusivamente locales y esa opción intenta insertarlos en el
 proyecto remoto. Para aplicar cambios remotos usa `npx supabase db push` sin
 `--include-seed`; eso aplica las migraciones pendientes, incluida la migración
 de auditoría de mantenimiento, pero no carga fixtures.
+
+Las migraciones `20261110011800_customer_update_ownership.sql` y
+`20261110011900_analytics_filter_corrections.sql` son cambios locales
+pendientes de revisión y validación en PostgreSQL. No las publiques hasta que
+las pruebas de base de datos pasen y se autorice su despliegue.
 
 ### Auditoría de scripts administrativos
 

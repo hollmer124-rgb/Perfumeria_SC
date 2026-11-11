@@ -34,6 +34,7 @@ import { fetchSuppliers, inventoryQueryKeys } from "@/features/inventory/data";
 import type { Supplier } from "@/features/inventory/types";
 import { supabase } from "@/lib/supabase";
 import { notify } from "@/lib/notifications";
+import { operationErrorMessage } from "@/lib/operation-error";
 
 const supplierSchema = z.object({
   name: z.string().trim().min(1, "Ingresa la razón social o nombre.").max(180),
@@ -227,7 +228,7 @@ export function SuppliersPage() {
       setEditing(null);
       notify.success("Proveedor guardado.");
     },
-    onError: (error) => notify.error(error.message),
+    onError: (error) => notify.error(operationErrorMessage(error, "No se pudo guardar el proveedor.", "Supplier save failed")),
   });
   const filtered = (suppliers.data ?? []).filter((supplier) =>
     `${supplier.name} ${supplier.tax_id ?? ""} ${supplier.contact_name ?? ""}`

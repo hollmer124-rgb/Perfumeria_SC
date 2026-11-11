@@ -3,7 +3,57 @@ create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(10);
+select plan(13);
+
+insert into auth.users (
+  instance_id,
+  id,
+  aud,
+  role,
+  email,
+  encrypted_password,
+  email_confirmed_at,
+  raw_app_meta_data,
+  raw_user_meta_data,
+  created_at,
+  updated_at
+)
+values
+  (
+    '00000000-0000-0000-0000-000000000000',
+    '97000000-0000-4000-8000-000000000021',
+    'authenticated',
+    'authenticated',
+    'recipe-test-employee@example.test',
+    '',
+    now(),
+    '{"provider":"email","providers":["email"]}',
+    '{}',
+    now(),
+    now()
+  ),
+  (
+    '00000000-0000-0000-0000-000000000000',
+    '97000000-0000-4000-8000-000000000022',
+    'authenticated',
+    'authenticated',
+    'recipe-test-admin@example.test',
+    '',
+    now(),
+    '{"provider":"email","providers":["email"]}',
+    '{}',
+    now(),
+    now()
+  );
+
+select private.begin_system_maintenance('pgtap recipe authorization verification');
+
+insert into public.profiles (id, role, display_name)
+values
+  ('97000000-0000-4000-8000-000000000021', 'employee', 'Recipe test employee'),
+  ('97000000-0000-4000-8000-000000000022', 'admin', 'Recipe test admin');
+
+select private.end_system_maintenance();
 
 select ok(
   has_function_privilege(
@@ -26,19 +76,28 @@ select ok(
 select ok(
   has_function_privilege(
     'authenticated',
-    'public.register_recipe_manufacture(uuid,integer,numeric,public.payment_method,uuid,uuid,text)',
+    'public.register_pos_sale(jsonb,public.payment_method,uuid,bigint,uuid,uuid,text)',
     'EXECUTE'
   ),
-  'authenticated employees and administrators can request on-demand manufacture'
+  'authenticated employees and administrators can request recipe manufacture through the POS RPC'
 );
 
 select ok(
   not has_function_privilege(
     'anon',
+    'public.register_pos_sale(jsonb,public.payment_method,uuid,bigint,uuid,uuid,text)',
+    'EXECUTE'
+  ),
+  'anonymous callers cannot request recipe manufacture through the POS RPC'
+);
+
+select ok(
+  not has_function_privilege(
+    'authenticated',
     'public.register_recipe_manufacture(uuid,integer,numeric,public.payment_method,uuid,uuid,text)',
     'EXECUTE'
   ),
-  'anonymous callers cannot manufacture recipes'
+  'the superseded standalone manufacturing RPC is not exposed to API users'
 );
 
 select ok(
@@ -90,6 +149,50 @@ select ok(
   ),
   'employee API cannot read manufacturing cost or profit'
 );
+
+set local role authenticated;
+select set_config(
+  'request.jwt.claim.sub',
+  '97000000-0000-4000-8000-000000000021',
+  true
+);
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"97000000-0000-4000-8000-000000000021","role":"authenticated"}',
+  true
+);
+select throws_ok(
+  $$select public.register_pos_sale(
+      '[]'::jsonb, 'cash'::public.payment_method,
+      '97000000-0000-4000-8000-000000000031'::uuid
+    )$$,
+  '22023',
+  'Sale must contain between 1 and 100 lines',
+  'an authenticated employee passes identity authorization and reaches sale validation'
+);
+reset role;
+
+set local role authenticated;
+select set_config(
+  'request.jwt.claim.sub',
+  '97000000-0000-4000-8000-000000000022',
+  true
+);
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"97000000-0000-4000-8000-000000000022","role":"authenticated"}',
+  true
+);
+select throws_ok(
+  $$select public.register_pos_sale(
+      '[]'::jsonb, 'cash'::public.payment_method,
+      '97000000-0000-4000-8000-000000000032'::uuid
+    )$$,
+  '22023',
+  'Sale must contain between 1 and 100 lines',
+  'an authenticated administrator passes identity authorization and reaches sale validation'
+);
+reset role;
 
 select * from finish();
 rollback;

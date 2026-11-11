@@ -7,17 +7,17 @@ begin;
 select plan(31);
 
 select ok(
-  (select count(*) = 18
+  (select count(*) = 22
      from pg_class c
      join pg_namespace n on n.oid = c.relnamespace
     where n.nspname = 'public'
       and c.relkind = 'r'
       and c.relrowsecurity),
-  'RLS is enabled on all 18 application tables'
+  'RLS is enabled on all 22 application tables'
 );
 
 select ok(
-  (select count(distinct tablename) = 18
+  (select count(distinct tablename) = 22
      from pg_policies
     where schemaname = 'public'),
   'every application table has at least one policy'
@@ -31,7 +31,8 @@ select ok(
         'recipe_components', 'customers', 'suppliers', 'sales', 'sale_items',
         'sale_material_usage', 'purchases', 'purchase_items',
         'inventory_movements', 'expenses', 'cash_sessions', 'cash_movements',
-        'audit_logs'
+        'audit_logs', 'payment_method_settings', 'sale_adjustments',
+        'expense_categories', 'financial_incomes'
       ]) as t(table_name)
      where has_table_privilege(
        'anon', format('public.%I', t.table_name), 'SELECT'
@@ -122,18 +123,18 @@ select ok(
 select ok(
   has_function_privilege(
     'authenticated',
-    'public.register_sale(jsonb,public.payment_method,uuid,uuid,text)',
+    'public.register_pos_sale(jsonb,public.payment_method,uuid,bigint,uuid,uuid,text)',
     'EXECUTE'
   ),
-  'authenticated role can call the validated sale function'
+  'authenticated role can call the validated point-of-sale function'
 );
 select ok(
   not has_function_privilege(
     'anon',
-    'public.register_sale(jsonb,public.payment_method,uuid,uuid,text)',
+    'public.register_pos_sale(jsonb,public.payment_method,uuid,bigint,uuid,uuid,text)',
     'EXECUTE'
   ),
-  'anonymous role cannot call the sale function'
+  'anonymous role cannot call the point-of-sale function'
 );
 select ok(
   not has_function_privilege(

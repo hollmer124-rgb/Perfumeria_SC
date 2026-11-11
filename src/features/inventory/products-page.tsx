@@ -48,6 +48,7 @@ import type {
 } from "@/features/inventory/types";
 import { supabase } from "@/lib/supabase";
 import { notify } from "@/lib/notifications";
+import { operationErrorMessage } from "@/lib/operation-error";
 
 const productSchema = z.object({
   name: z.string().trim().min(1, "Ingresa el nombre.").max(180),
@@ -289,7 +290,7 @@ export function ProductsPage() {
       setEditing(null);
       notify.success("Producto guardado.");
     },
-    onError: (error) => notify.error(error.message),
+    onError: (error) => notify.error(operationErrorMessage(error, "No se pudo guardar el producto.", "Product save failed")),
   });
 
   const supplierNames = useMemo(

@@ -2,7 +2,7 @@ create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(10);
+select plan(15);
 
 select ok(
   has_function_privilege(
@@ -91,6 +91,45 @@ select ok(
     'public.admin_operational_report(timestamptz,timestamptz,text,uuid,text,uuid,timestamptz,timestamptz)'::regprocedure
   ) like '%private.current_role() is distinct from%',
   'the report RPC validates the administrator role inside PostgreSQL'
+);
+
+select ok(
+  not has_function_privilege(
+    'authenticated',
+    'public.dashboard_metrics_before_filter_correction(timestamptz,timestamptz,timestamptz)',
+    'EXECUTE'
+  ),
+  'the uncorrected dashboard implementation is not exposed as an API RPC'
+);
+
+select ok(
+  not has_function_privilege(
+    'authenticated',
+    'public.admin_operational_report_before_filter_correction(timestamptz,timestamptz,text,uuid,text,uuid,timestamptz,timestamptz)',
+    'EXECUTE'
+  ),
+  'the uncorrected report implementation is not exposed as an API RPC'
+);
+
+select ok(
+  not has_function_privilege(
+    'authenticated',
+    'private.net_sale_line_amount(bigint,bigint,bigint,bigint,text,bigint)',
+    'EXECUTE'
+  ),
+  'the report calculation helper is not directly executable by API users'
+);
+
+select is(
+  private.net_sale_line_amount(1000, 100, 2000, 1900, null, null),
+  950::bigint,
+  'line totals distribute the sale discount'
+);
+
+select is(
+  private.net_sale_line_amount(1000, 100, 2000, 1900, 'refund', 950),
+  475::bigint,
+  'line totals attribute refunds proportionally after discount'
 );
 
 select * from finish();

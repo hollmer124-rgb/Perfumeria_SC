@@ -32,6 +32,7 @@ import { SaleReceipt } from "@/features/sales/receipt";
 import type { PaymentMethod, PosCategory, SaleCartLine, SaleRecord } from "@/features/sales/types";
 import type { InventoryCost, RetailProduct } from "@/features/inventory/types";
 import { notify } from "@/lib/notifications";
+import { operationErrorMessage } from "@/lib/operation-error";
 
 const paymentLabels: Record<PaymentMethod, string> = {
   cash: "Efectivo",
@@ -361,7 +362,7 @@ export function PosPage() {
       setIdempotencyKey(crypto.randomUUID());
       notify.success("Venta confirmada y existencias actualizadas.");
     },
-    onError: (error) => notify.error(error.message),
+    onError: (error) => notify.error(operationErrorMessage(error, "No se pudo confirmar la venta.", "Sale registration failed")),
   });
 
   const customerMutation = useMutation({
@@ -375,7 +376,7 @@ export function PosPage() {
       setNewCustomerPhone("");
       notify.success("Cliente registrado.");
     },
-    onError: (error) => notify.error(error.message),
+    onError: (error) => notify.error(operationErrorMessage(error, "No se pudo registrar el cliente.", "Customer registration failed")),
   });
   const paymentSettingsMutation = useMutation({
     mutationFn: configurePaymentMethod,
@@ -384,7 +385,7 @@ export function PosPage() {
       setConfigureTarget(null);
       notify.success("Método de pago actualizado.");
     },
-    onError: (error) => notify.error(error.message),
+    onError: (error) => notify.error(operationErrorMessage(error, "No se pudo actualizar el método de pago.", "Payment method update failed")),
   });
   const reverseMutation = useMutation({
     mutationFn: reverseSale,
@@ -397,7 +398,7 @@ export function PosPage() {
       setRefundCashSession("");
       notify.success("Ajuste autorizado y registrado. La venta se conserva en el historial.");
     },
-    onError: (error) => notify.error(error.message),
+    onError: (error) => notify.error(operationErrorMessage(error, "No se pudo registrar el ajuste de la venta.", "Sale reversal failed")),
   });
 
   function updateCart(updater: (current: SaleCartLine[]) => SaleCartLine[]) {

@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BadgeCheck,
@@ -64,6 +64,7 @@ import type {
 } from "@/features/inventory/types";
 import { supabase } from "@/lib/supabase";
 import { notify } from "@/lib/notifications";
+import { operationErrorMessage } from "@/lib/operation-error";
 
 type PurchaseItemChoice = {
   key: string;
@@ -106,6 +107,7 @@ function PurchaseDialog({
     purchased_at: string;
     notes: string;
     items: { type: "material" | "retail_product"; id: string; quantity: number; unit_cost_cop: number }[];
+    idempotency_key: string;
   }) => Promise<void>;
 }) {
   const [supplierId, setSupplierId] = useState("");
@@ -116,6 +118,7 @@ function PurchaseDialog({
   const [unitCost, setUnitCost] = useState("");
   const [lines, setLines] = useState<DraftLine[]>([]);
   const [formError, setFormError] = useState<string | null>(null);
+  const idempotencyRef = useRef<{ payload: string; key: string } | null>(null);
 
   const choiceByKey = useMemo(
     () => new Map(choices.map((choice) => [choice.key, choice])),
@@ -210,11 +213,20 @@ function PurchaseDialog({
       });
     }
     try {
-      await onSave({
+      const request = {
         ...header.data,
         notes: header.data.notes,
         items: parsedItems,
+      };
+      const payload = JSON.stringify(request);
+      if (idempotencyRef.current?.payload !== payload) {
+        idempotencyRef.current = { payload, key: crypto.randomUUID() };
+      }
+      await onSave({
+        ...request,
+        idempotency_key: idempotencyRef.current.key,
       });
+      idempotencyRef.current = null;
       setSupplierId("");
       setPurchasedAt(localDateInputValue());
       setNotes("");
@@ -520,6 +532,7 @@ export function PurchasesPage() {
         quantity: number;
         unit_cost_cop: number;
       }[];
+      idempotency_key: string;
     }) => {
       if (!supabase) throw new Error("Supabase no está conectado.");
       const { data, error } = await supabase.rpc("create_purchase", {
@@ -527,6 +540,7 @@ export function PurchasesPage() {
         p_purchased_at: purchase.purchased_at,
         p_items: purchase.items,
         p_notes: purchase.notes || null,
+        p_idempotency_key: purchase.idempotency_key,
       });
       if (error) throw error;
       if (!data) throw new Error("Supabase no confirmó la compra.");
@@ -536,7 +550,7 @@ export function PurchasesPage() {
       setDialogOpen(false);
       notify.success("Compra guardada como borrador. Confirma la recepción para actualizar existencias.");
     },
-    onError: (error) => notify.error(error.message),
+    onError: (error) => notify.error(operationErrorMessage(error, "No se pudo guardar la compra.", "Purchase save failed")),
   });
 
   const receivePurchase = useMutation({
@@ -552,7 +566,7 @@ export function PurchasesPage() {
       await refreshAfterPurchase();
       notify.success("Compra recibida; existencias y costos promedio actualizados.");
     },
-    onError: (error) => notify.error(error.message),
+    onError: (error) => notify.error(operationErrorMessage(error, "No se pudo recibir la compra.", "Purchase receipt failed")),
   });
 
   const cancelPurchase = useMutation({
@@ -567,7 +581,7 @@ export function PurchasesPage() {
       await queryClient.invalidateQueries({ queryKey: inventoryQueryKeys.purchases });
       notify.success("Borrador de compra cancelado; se conserva en el historial.");
     },
-    onError: (error) => notify.error(error.message),
+    onError: (error) => notify.error(operationErrorMessage(error, "No se pudo cancelar la compra.", "Purchase cancellation failed")),
   });
 
   const loading =

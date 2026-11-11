@@ -58,6 +58,7 @@ import type {
 import { useAuth } from "@/features/auth/use-auth";
 import { supabase } from "@/lib/supabase";
 import { notify } from "@/lib/notifications";
+import { operationErrorMessage } from "@/lib/operation-error";
 
 const materialSchema = z
   .object({
@@ -638,7 +639,7 @@ export function InventoryPage() {
       setEditingMaterial(null);
       notify.success("Material guardado.");
     },
-    onError: (error) => notify.error(error.message),
+    onError: (error) => notify.error(operationErrorMessage(error, "No se pudo guardar el material.", "Material save failed")),
   });
 
   const adjustInventory = useMutation({
@@ -666,7 +667,7 @@ export function InventoryPage() {
       setAdjustingItem(null);
       notify.success("Ajuste de inventario registrado.");
     },
-    onError: (error) => notify.error(error.message),
+    onError: (error) => notify.error(operationErrorMessage(error, "No se pudo ajustar el inventario.", "Inventory adjustment failed")),
   });
 
   const costMap = useMemo(

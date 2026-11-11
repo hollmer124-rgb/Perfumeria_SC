@@ -26,6 +26,7 @@ import { ManufactureDialog } from "@/features/recipes/manufacture-dialog";
 import { RecipeFormDialog } from "@/features/recipes/recipe-form-dialog";
 import type { Recipe, RecipeSaveInput } from "@/features/recipes/types";
 import { notify } from "@/lib/notifications";
+import { operationErrorMessage } from "@/lib/operation-error";
 import { fetchPaymentMethods, salesQueryKeys } from "@/features/sales/data";
 
 const unitLabels: Record<string, string> = {
@@ -103,7 +104,7 @@ export function RecipesPage() {
       setEditingRecipe(null);
       notify.success("Borrador de receta guardado.");
     },
-    onError: (error) => notify.error(error.message),
+    onError: (error) => notify.error(operationErrorMessage(error, "No se pudo guardar la receta.", "Recipe save failed")),
   });
   const activateMutation = useMutation({
     mutationFn: activateRecipe,
@@ -111,7 +112,7 @@ export function RecipesPage() {
       await invalidateRecipes();
       notify.success("Receta activada. La versión anterior queda en el historial.");
     },
-    onError: (error) => notify.error(error.message),
+    onError: (error) => notify.error(operationErrorMessage(error, "No se pudo activar la receta.", "Recipe activation failed")),
   });
   const versionMutation = useMutation({
     mutationFn: createRecipeVersion,
@@ -125,7 +126,7 @@ export function RecipesPage() {
       setEditorOpen(true);
       notify.success("Se creó una nueva versión en borrador.");
     },
-    onError: (error) => notify.error(error.message),
+    onError: (error) => notify.error(operationErrorMessage(error, "No se pudo crear la versión.", "Recipe version creation failed")),
   });
   const manufactureMutation = useMutation({
     mutationFn: manufactureRecipe,
@@ -140,7 +141,7 @@ export function RecipesPage() {
       setManufacturingRecipe(null);
       notify.success("Fabricación y venta registradas; se actualizaron las existencias.");
     },
-    onError: (error) => notify.error(error.message),
+    onError: (error) => notify.error(operationErrorMessage(error, "No se pudo registrar la fabricación y venta.", "Recipe manufacture failed")),
   });
 
   const visibleRecipes = useMemo(() => {
