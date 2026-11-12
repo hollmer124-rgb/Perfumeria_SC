@@ -17,11 +17,27 @@ npm install
 npm run dev
 ```
 
-La interfaz puede ejecutarse sin variables de entorno. `VITE_APP_NAME` es
-opcional y solo personaliza el nombre visible. Para habilitar login y rutas
-protegidas, copia `.env.example` a `.env.local` y configura la URL de tu
-proyecto y su clave publicable (`anon`); el cliente no acepta `service_role`.
-Las variables `VITE_*` se incluyen en el navegador y no son secretas.
+Para iniciar la aplicación, configura `.env.development.local` con la URL local
+`http://127.0.0.1:54321` y la clave publicable (`anon`) del stack local.
+`VITE_APP_NAME` es opcional y solo personaliza el nombre visible.
+Las variables `VITE_*` se incluyen en el navegador: una clave `anon`/publishable
+no es secreta y nunca debe sustituirse por `service_role` o una clave secreta.
+
+Vite valida el destino antes de iniciar el servidor o compilar. Un proceso
+local solo acepta el endpoint loopback de Supabase local, incluso si una
+variable de proceso intenta reemplazar los archivos `.env`. Un build local
+también necesita ese endpoint; si el modo `production` carga una URL remota
+desde `.env.local`, fallará hasta que `.env.production.local` o las variables
+del proceso apunten al stack local.
+
+En Vercel, define `VITE_SUPABASE_URL` y una clave publicable/anon para cada
+entorno. Production debe apuntar al proyecto `qdkbmzfihdriykdqatde`. Preview
+requiere un proyecto Supabase independiente y la variable
+`SUPABASE_PREVIEW_PROJECT_REF` configurada en el ámbito Preview con su
+referencia; el build falla si falta o si la URL no coincide. No se debe
+reutilizar el proyecto de producción para Preview. Las variables del proceso
+tienen prioridad sobre los archivos `.env`; el validador comprueba el destino
+efectivo que Vite compilará.
 
 ### Acceso y recuperación
 
@@ -43,10 +59,11 @@ Las variables `VITE_*` se incluyen en el navegador y no son secretas.
   administrador ve todos los módulos. Esto es una capa visual: las mismas
   restricciones se aplican en PostgreSQL mediante RLS, grants por columna y
   validaciones internas de cada función transaccional.
-- El empleado puede consultar existencias operativas de materiales, pero no
-  costos promedio, componentes de recetas, recetas administrativas,
-  configuración, compras, gastos, informes ni auditoría. Puede registrar
-  clientes y actualizar únicamente los que creó.
+- El empleado puede consultar existencias operativas de materiales y los datos
+  del negocio en Configuración, pero no editarlos. No puede consultar costos
+  promedio, componentes de recetas, recetas administrativas, compras, gastos,
+  informes ni auditoría. Puede registrar clientes y actualizar únicamente los
+  que creó.
 - Las rutas privadas redirigen al login incluso si se abren directamente.
   Manipular el router o llamar a PostgREST/RPC desde el navegador no eleva el
   rol ni concede permisos en la base de datos.
