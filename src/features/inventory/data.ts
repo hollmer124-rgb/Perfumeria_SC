@@ -51,11 +51,32 @@ export async function fetchMaterials(): Promise<Material[]> {
 export async function fetchPerfumes(): Promise<Perfume[]> {
   const { data, error } = await requireSupabase()
     .from("perfumes")
-    .select("id, name, brand, active")
+    .select("id, name, brand, description, active")
     .order("brand")
     .order("name");
   if (error) throw error;
   return (data ?? []) as Perfume[];
+}
+
+export async function savePerfumeReference(
+  id: string | null,
+  values: Pick<Perfume, "name" | "brand" | "description" | "active">,
+): Promise<void> {
+  const db = requireSupabase();
+  const request = id
+    ? db
+        .from("perfumes")
+        .update(values)
+        .eq("id", id)
+        .select("id")
+        .single()
+    : db
+        .from("perfumes")
+        .insert(values)
+        .select("id")
+        .single();
+  const { error } = await request;
+  if (error) throw error;
 }
 
 export async function fetchSuppliers(): Promise<Supplier[]> {

@@ -21,6 +21,7 @@ import { ProductsPage } from "@/features/inventory/products-page";
 import { InventoryPage } from "@/features/inventory/inventory-page";
 import { PurchasesPage } from "@/features/inventory/purchases-page";
 import { SuppliersPage } from "@/features/inventory/suppliers-page";
+import { OlfactoryReferencesPage } from "@/features/inventory/olfactory-references-page";
 import { RecipesPage } from "@/features/recipes/recipes-page";
 import { PosPage } from "@/features/sales/pos-page";
 import { CashPage } from "@/features/financial/cash-page";
@@ -39,6 +40,8 @@ function renderModule(module: (typeof adminModules)[number]) {
       return <PurchasesPage />;
     case "/proveedores":
       return <SuppliersPage />;
+    case "/referencias-olfativas":
+      return <OlfactoryReferencesPage />;
     case "/recetas":
       return <RecipesPage />;
     case "/ventas":

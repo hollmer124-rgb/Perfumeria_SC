@@ -6,6 +6,7 @@ import {
   Package,
   ReceiptText,
   Settings2,
+  Sparkles,
   ShoppingBag,
   Truck,
   Users,
@@ -38,7 +39,7 @@ export const navigationGroups: AdminNavigationGroup[] = [
       {
         path: "/productos",
         title: "Productos",
-        description: "Catálogo y referencias de perfumería.",
+        description: "Catálogo de productos originales y 1.1.",
         icon: Package,
       },
       {
@@ -58,6 +59,12 @@ export const navigationGroups: AdminNavigationGroup[] = [
         title: "Compras",
         description: "Abastecimiento y registro de compras.",
         icon: ReceiptText,
+      },
+      {
+        path: "/referencias-olfativas",
+        title: "Referencias olfativas",
+        description: "Nombres y marcas de aromas, independientes del inventario.",
+        icon: Sparkles,
       },
     ],
   },

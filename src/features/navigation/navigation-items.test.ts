@@ -15,6 +15,7 @@ describe("admin navigation", () => {
       "/inventario",
       "/recetas",
       "/compras",
+      "/referencias-olfativas",
       "/clientes",
       "/proveedores",
       "/gastos",
@@ -23,6 +24,18 @@ describe("admin navigation", () => {
       "/configuracion",
     ]);
     expect(new Set(paths).size).toBe(paths.length);
+  });
+
+  it("keeps olfactory references out of employee navigation", () => {
+    const adminPaths = getNavigationGroupsForRole("admin").flatMap((group) =>
+      group.items.map((item) => item.path),
+    );
+    const employeePaths = getNavigationGroupsForRole("employee").flatMap((group) =>
+      group.items.map((item) => item.path),
+    );
+
+    expect(adminPaths).toContain("/referencias-olfativas");
+    expect(employeePaths).not.toContain("/referencias-olfativas");
   });
 
   it("limits employee navigation to operational routes", () => {

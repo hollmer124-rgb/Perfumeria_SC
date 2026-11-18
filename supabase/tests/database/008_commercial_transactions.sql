@@ -5,7 +5,7 @@ create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(53);
+select plan(61);
 
 insert into auth.users (
   instance_id,
@@ -70,7 +70,18 @@ values
   ('97000000-0000-4000-8000-000000000041', 'employee', 'Commercial test employee'),
   ('97000000-0000-4000-8000-000000000042', 'admin', 'Commercial test admin');
 
+update public.materials
+   set perfume_id = null
+ where id = '94000000-0000-4000-8000-000000000001';
+
 select private.end_system_maintenance();
+
+select is(
+  (select perfume_id from public.materials
+    where id = '94000000-0000-4000-8000-000000000001'),
+  null::uuid,
+  'the synthetic Winner Sport essence can be used without an olfactory link'
+);
 
 create temporary table commercial_test_refs (
   ref text primary key,
@@ -864,6 +875,14 @@ select is(
   'manufacturing records one linked inventory movement per recipe material'
 );
 
+create temporary table commercial_recipe_snapshot_baseline as
+select recipe_snapshot
+  from public.sale_items
+ where sale_id = (
+   select id from pg_temp.commercial_test_refs where ref = 'employee_manufacture'
+ )
+   and recipe_id = '95000000-0000-4000-8000-000000000001';
+
 set local role authenticated;
 select set_config(
   'request.jwt.claim.sub',
@@ -895,6 +914,65 @@ select ok(
           select id from pg_temp.commercial_test_refs where ref = 'admin_manufacture'
         )),
   'administrator can also record a linked recipe manufacture'
+);
+
+set local role authenticated;
+select set_config(
+  'request.jwt.claim.sub',
+  '97000000-0000-4000-8000-000000000042',
+  true
+);
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"97000000-0000-4000-8000-000000000042","role":"authenticated"}',
+  true
+);
+select lives_ok(
+  $$insert into pg_temp.commercial_test_refs (ref, id)
+    select 'snapshot_recipe_version',
+           public.create_recipe_version(
+             '95000000-0000-4000-8000-000000000001'
+           )$$,
+  'an administrator can create a draft version for snapshot verification'
+);
+select lives_ok(
+  $$update public.recipe_components
+       set quantity = quantity + 1
+     where recipe_id = (
+       select id from pg_temp.commercial_test_refs
+        where ref = 'snapshot_recipe_version'
+     )
+       and material_id = '94000000-0000-4000-8000-000000000001'$$,
+  'the new draft recipe can be edited without changing the active version'
+);
+reset role;
+
+select is(
+  (select recipe_snapshot
+     from public.sale_items
+    where sale_id = (
+      select id from pg_temp.commercial_test_refs
+       where ref = 'employee_manufacture'
+    )
+      and recipe_id = '95000000-0000-4000-8000-000000000001'),
+  (select recipe_snapshot
+     from pg_temp.commercial_recipe_snapshot_baseline),
+  'a sale recipe snapshot remains unchanged after a new recipe version is edited'
+);
+
+select ok(
+  (select quantity
+     from public.recipe_components
+    where recipe_id = (
+      select id from pg_temp.commercial_test_refs
+       where ref = 'snapshot_recipe_version'
+    )
+      and material_id = '94000000-0000-4000-8000-000000000001')
+  <> (select quantity
+        from public.recipe_components
+       where recipe_id = '95000000-0000-4000-8000-000000000001'
+         and material_id = '94000000-0000-4000-8000-000000000001'),
+  'editing the version changes only the new recipe component'
 );
 
 set local role authenticated;
@@ -1158,6 +1236,68 @@ select ok(
        and actor_id = '97000000-0000-4000-8000-000000000042'
   ),
   'sale reversal and status change preserve administrator audit history'
+);
+
+set local role authenticated;
+select set_config(
+  'request.jwt.claim.sub',
+  '97000000-0000-4000-8000-000000000042',
+  true
+);
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"97000000-0000-4000-8000-000000000042","role":"authenticated"}',
+  true
+);
+select lives_ok(
+  $$select public.adjust_inventory(
+      null,
+      '93000000-0000-4000-8000-000000000006',
+      1,
+      'pgTAP 1.1 opening stock',
+      10000
+    )$$,
+  'an administrator can receive one unit of a 1.1 retail product'
+);
+select lives_ok(
+  $$insert into pg_temp.commercial_test_refs (ref, id)
+    select 'retail_11_sale',
+           public.register_pos_sale(
+             '[{"kind":"retail_product","id":"93000000-0000-4000-8000-000000000006","quantity":1}]'::jsonb,
+             'transfer',
+             '97000000-0000-4000-8000-000000000099'::uuid
+           )$$,
+  'an administrator can sell a stocked 1.1 retail product'
+);
+reset role;
+
+select ok(
+  (select stock_qty = 0
+     from public.retail_products
+    where id = '93000000-0000-4000-8000-000000000006')
+  and exists (
+    select 1
+      from public.sale_items
+     where sale_id = (
+       select id from pg_temp.commercial_test_refs where ref = 'retail_11_sale'
+     )
+       and item_type = 'retail_product'
+       and product_type_snapshot = '1.1'
+  )
+  and exists (
+    select 1
+      from public.inventory_movements
+     where retail_product_id = '93000000-0000-4000-8000-000000000006'
+       and movement_type = 'sale'
+       and quantity_delta = -1
+       and sale_item_id = (
+         select id from public.sale_items
+          where sale_id = (
+            select id from pg_temp.commercial_test_refs where ref = 'retail_11_sale'
+          )
+       )
+  ),
+  'a 1.1 sale snapshots its type and decrements finished-product stock'
 );
 
 select * from finish();

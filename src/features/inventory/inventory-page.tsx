@@ -46,6 +46,12 @@ import {
   inventoryQueryKeys,
   movementLabel,
 } from "@/features/inventory/data";
+import {
+  emptyMaterialValues,
+  materialPerfumeIdForSave,
+  materialSchema,
+  type MaterialValues,
+} from "@/features/inventory/material-form";
 import { formatCop, formatQuantity } from "@/features/inventory/format";
 import type {
   InventoryCost,
@@ -60,77 +66,12 @@ import { supabase } from "@/lib/supabase";
 import { notify } from "@/lib/notifications";
 import { operationErrorMessage } from "@/lib/operation-error";
 
-const materialSchema = z
-  .object({
-    name: z.string().trim().min(1, "Ingresa el nombre.").max(180),
-    category: z.enum(["essence", "alcohol", "pheromone", "bottle", "other"]),
-    base_unit: z.enum(["g", "ml", "unit", "dose"]),
-    perfume_id: z.string(),
-    supplier_id: z.string(),
-    size_ml: z.string(),
-    minimum_qty: z.string().regex(/^\d+([.]\d{1,4})?$/, "Ingresa una cantidad válida."),
-    active: z.enum(["true", "false"]),
-  })
-  .superRefine((values, context) => {
-    if (values.category === "essence" && !values.perfume_id) {
-      context.addIssue({
-        code: "custom",
-        message: "Vincula la esencia con un perfume.",
-        path: ["perfume_id"],
-      });
-    }
-    if (values.category === "bottle" && !values.size_ml) {
-      context.addIssue({
-        code: "custom",
-        message: "Selecciona la presentación del frasco.",
-        path: ["size_ml"],
-      });
-    }
-    if (
-      values.category === "bottle" &&
-      values.base_unit !== "unit"
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "Los frascos se controlan por unidades.",
-        path: ["base_unit"],
-      });
-    }
-    if (values.category !== "essence" && values.perfume_id) {
-      context.addIssue({
-        code: "custom",
-        message: "Solo una esencia se vincula a un perfume.",
-        path: ["perfume_id"],
-      });
-    }
-    if (values.category !== "bottle" && values.size_ml) {
-      context.addIssue({
-        code: "custom",
-        message: "El tamaño solo aplica a frascos.",
-        path: ["size_ml"],
-      });
-    }
-  });
-
-type MaterialValues = z.infer<typeof materialSchema>;
 type InventoryFilter = "all" | "materials" | "products" | "low";
-
-const emptyMaterialValues: MaterialValues = {
-  name: "",
-  category: "other",
-  base_unit: "unit",
-  perfume_id: "",
-  supplier_id: "",
-  size_ml: "",
-  minimum_qty: "0",
-  active: "true",
-};
 
 function MaterialDialog({
   open,
   onOpenChange,
   material,
-  perfumes,
   suppliers,
   onSave,
   isSaving,
@@ -138,7 +79,6 @@ function MaterialDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   material: Material | null;
-  perfumes: { id: string; name: string; brand: string; active: boolean }[];
   suppliers: Supplier[];
   onSave: (values: MaterialValues) => Promise<void>;
   isSaving: boolean;
@@ -150,7 +90,6 @@ function MaterialDialog({
             name: material.name,
             category: material.category,
             base_unit: material.base_unit,
-            perfume_id: material.perfume_id ?? "",
             supplier_id: material.supplier_id ?? "",
             size_ml: material.size_ml ? String(material.size_ml) : "",
             minimum_qty: String(material.minimum_qty),
@@ -227,30 +166,6 @@ function MaterialDialog({
               </select>
             )}
           </FormField>
-          {category === "essence" ? (
-            <FormField
-              label="Perfume vinculado"
-              error={errors.perfume_id?.message}
-              required
-            >
-              {(props) => (
-                <select
-                  className="h-10 w-full rounded-lg border border-border bg-card px-3 text-sm"
-                  {...props}
-                  {...register("perfume_id")}
-                >
-                  <option value="">Selecciona un perfume</option>
-                  {perfumes
-                    .filter((perfume) => perfume.active)
-                    .map((perfume) => (
-                      <option key={perfume.id} value={perfume.id}>
-                        {perfume.brand} · {perfume.name}
-                      </option>
-                    ))}
-                </select>
-              )}
-            </FormField>
-          ) : null}
           {category === "bottle" ? (
             <FormField label="Presentación del frasco" error={errors.size_ml?.message} required>
               {(props) => (
@@ -615,7 +530,7 @@ export function InventoryPage() {
         category: values.category,
         base_unit:
           values.category === "bottle" ? "unit" : values.base_unit,
-        perfume_id: values.category === "essence" ? values.perfume_id : null,
+        perfume_id: materialPerfumeIdForSave(values.category, editingMaterial),
         supplier_id: values.supplier_id || null,
         size_ml:
           values.category === "bottle" ? Number(values.size_ml) : null,
@@ -961,7 +876,6 @@ export function InventoryPage() {
         }}
         onSave={(values) => saveMaterial.mutateAsync(values)}
         open={materialDialogOpen}
-        perfumes={perfumes.data ?? []}
         suppliers={suppliers.data ?? []}
       />
       <AdjustmentDialog

@@ -56,9 +56,10 @@ efectivo que Vite compilará.
   La recuperación usa un enlace de un solo uso, no revela si un correo tiene
   cuenta y exige una nueva contraseña de al menos 12 caracteres.
 - El empleado solo ve Dashboard, Ventas, Inventario, Clientes y Caja. El
-  administrador ve todos los módulos. Esto es una capa visual: las mismas
-  restricciones se aplican en PostgreSQL mediante RLS, grants por columna y
-  validaciones internas de cada función transaccional.
+  administrador ve todos los módulos, incluida la gestión independiente de
+  Referencias olfativas. Esto es una capa visual: las mismas restricciones se
+  aplican en PostgreSQL mediante RLS, grants por columna y validaciones internas
+  de cada función transaccional.
 - El empleado puede consultar existencias operativas de materiales y los datos
   del negocio en Configuración, pero no editarlos. No puede consultar costos
   promedio, componentes de recetas, recetas administrativas, compras, gastos,
@@ -342,6 +343,13 @@ ponderado. Los registros vinculados a movimientos se conservan; los
 proveedores se pueden desactivar sin borrar su historial. En registros de
 catálogo preexistentes sin marca asociada, la migración usa el marcador
 «Marca pendiente» para revisión administrativa, sin inferir una marca real.
+
+La sección **Referencias olfativas** administra `public.perfumes` sin crear
+productos ni existencias. Los materiales son insumos independientes; una
+esencia puede no tener referencia y puede alimentar varias recetas mediante
+`recipe_components`, que sigue siendo la relación que determina el consumo.
+Las recetas activas protegen tanto sus materiales como su referencia de
+cambios que las dejarían inválidas.
 
 ### Recetas y fabricación bajo pedido
 

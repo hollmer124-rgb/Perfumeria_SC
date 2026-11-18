@@ -42,6 +42,7 @@ export interface Perfume {
   id: string;
   name: string;
   brand: string;
+  description: string | null;
   active: boolean;
 }
 
